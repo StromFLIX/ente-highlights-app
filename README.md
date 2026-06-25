@@ -50,3 +50,36 @@ The API base URL defaults to `https://highlights.ente.stromflix.com` and can be 
 or `localStorage` on web — for silent re-login).
 
 > Expo Go won't include the custom native modules; use a dev build for the device.
+
+## Build an installable Android APK
+
+The `android/` project is checked in. Build a standalone, installable APK with Gradle:
+
+```bash
+# one-time, only if android/ is missing or native deps changed:
+npx expo prebuild --platform android
+
+cd android
+./gradlew assembleRelease        # or assembleDebug for a debug build
+```
+
+The APK lands at:
+
+```
+android/app/build/outputs/apk/release/app-release.apk      # release
+android/app/build/outputs/apk/debug/app-debug.apk          # debug
+```
+
+Install it on a connected device/emulator:
+
+```bash
+adb install -r android/app/build/outputs/apk/release/app-release.apk
+```
+
+Or just copy the `.apk` to the phone and open it (enable "install unknown apps").
+
+> The `release` build is currently **debug-signed** (see `signingConfigs` in
+> `android/app/build.gradle`), so it installs directly for sideloading but isn't
+> Play-Store-ready. App id: `com.stromflix.entehighlights`. For a Play-signed
+> bundle use `eas build --profile production --platform android` (produces an `.aab`).
+
