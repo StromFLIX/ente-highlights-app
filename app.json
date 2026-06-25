@@ -1,0 +1,35 @@
+{
+  "expo": {
+    "name": "Ente Highlights",
+    "slug": "ente-highlights-app",
+    "scheme": "entehighlights",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "backgroundColor": "#0B0B0F",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "android": {
+      "package": "com.stromflix.entehighlights"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Allow Ente Highlights to access your photos.",
+          "savePhotosPermission": "Allow Ente Highlights to save highlight packs to your gallery.",
+          "isAccessMediaLocationEnabled": true
+        }
+      ],
+      "expo-asset",
+      "expo-font"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
