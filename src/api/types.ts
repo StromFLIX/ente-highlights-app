@@ -94,6 +94,9 @@ export type SavedHighlight = {
   definition: HighlightDefinition;
   coverToken: string | null;
   coverThumbnailUrl: string | null;
+  /** Top-ranked thumbnails (cover first), used to build the collage cover. */
+  previewTokens: string[];
+  previewThumbnailUrls: string[];
   itemCount: number;
   sortOrder: number;
   updatedAtUs: number | null;
@@ -102,6 +105,23 @@ export type SavedHighlight = {
 export type SavedItemsResponse = {
   highlight: SavedHighlight;
   items: ImageItem[];
+};
+
+export type ShareLink = {
+  id: string;
+  highlightId: string;
+  label: string | null;
+  tokenPrefix: string;
+  allowDownload: boolean;
+  expiresAt: string | null;
+  revokedAt: string | null;
+  viewCount: number;
+  lastViewedAt: string | null;
+  createdAt: string;
+  active: boolean;
+  /** Only ever populated in the response that created the link. */
+  url: string | null;
+  secret: string | null;
 };
 
 export type Person = { name: string; imageCount: number; coverThumbnailUrl: string };

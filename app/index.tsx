@@ -16,8 +16,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { api, errorMessage } from '@/api/client';
 import type { SavedHighlight } from '@/api/types';
-import { AuthedImage } from '@/components/AuthedImage';
+import { CollageCover } from '@/components/CollageCover';
 import { Empty, ErrorState, Loading } from '@/components/ui';
+import { useAlbumActions } from '@/hooks/useAlbumActions';
 import { useAuth } from '@/state/auth';
 import { colors, radius, spacing, typography } from '@/theme';
 
@@ -31,6 +32,7 @@ export default function Home() {
   const router = useRouter();
   const qc = useQueryClient();
   const isAuthed = useAuth((s) => s.isAuthed);
+  const { pack, shareAlbum, savePack, revokeLinks } = useAlbumActions();
 
   const saved = useQuery({ queryKey: ['saved'], queryFn: api.savedList, enabled: isAuthed });
   const sync = useQuery({
@@ -64,37 +66,78 @@ export default function Home() {
     [qc],
   );
 
+  // Long-press used to delete outright, which made destruction the only hidden
+  // action and left sharing/saving undiscoverable. It now opens a menu.
+  // Android alerts cap out at three buttons, hence the second level.
+  const openMore = useCallback(
+    (h: SavedHighlight) => {
+      Alert.alert(h.title, undefined, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Stop sharing', onPress: () => revokeLinks(h) },
+        { text: 'Delete album', style: 'destructive', onPress: () => confirmDelete(h) },
+      ]);
+    },
+    [revokeLinks, confirmDelete],
+  );
+
+  const openMenu = useCallback(
+    (h: SavedHighlight) => {
+      Alert.alert(h.title, `${h.itemCount} photos`, [
+        { text: 'Share link…', onPress: () => shareAlbum(h) },
+        { text: 'Save all to gallery', onPress: () => savePack(h) },
+        { text: 'More…', onPress: () => openMore(h) },
+      ]);
+    },
+    [shareAlbum, savePack, openMore],
+  );
+
   const renderCard = useCallback(
-    ({ item: h }: { item: SavedHighlight }) => (
-      <Pressable
-        style={styles.card}
-        onPress={() => router.push(`/highlight/${h.id}`)}
-        onLongPress={() => confirmDelete(h)}
-        delayLongPress={350}
-      >
-        {h.coverThumbnailUrl ? (
-          <AuthedImage path={h.coverThumbnailUrl} style={styles.cover} />
-        ) : (
-          <View style={[styles.cover, styles.coverEmpty]}>
-            <Ionicons name="sparkles" size={28} color={colors.textFaint} />
+    ({ item: h }: { item: SavedHighlight }) => {
+      // Persisted query cache can predate the preview field, so never assume it.
+      const previews = h.previewThumbnailUrls?.length
+        ? h.previewThumbnailUrls
+        : h.coverThumbnailUrl
+          ? [h.coverThumbnailUrl]
+          : [];
+      const busy = pack?.id === h.id ? pack : null;
+      return (
+        <Pressable
+          style={styles.card}
+          onPress={() => router.push(`/highlight/${h.id}`)}
+          onLongPress={() => openMenu(h)}
+          delayLongPress={350}
+        >
+          {previews.length ? (
+            <CollageCover paths={previews} seed={h.id} style={styles.cover} />
+          ) : (
+            <View style={[styles.cover, styles.coverEmpty]}>
+              <Ionicons name="sparkles" size={28} color={colors.textFaint} />
+            </View>
+          )}
+          <View style={styles.scrim} />
+          {busy ? (
+            <View style={styles.busy}>
+              <ActivityIndicator size="small" color="#fff" />
+              <Text style={styles.busyText}>
+                {busy.done}/{busy.total}
+              </Text>
+            </View>
+          ) : h.itemCount ? (
+            <View style={styles.countPill}>
+              <Ionicons name="images" size={11} color="#fff" />
+              <Text style={styles.countText}>{h.itemCount}</Text>
+            </View>
+          ) : null}
+          <View style={styles.meta}>
+            {h.icon ? <Ionicons name={h.icon as any} size={15} color="#fff" /> : null}
+            <Text style={styles.cardTitle} numberOfLines={2}>
+              {h.title}
+            </Text>
           </View>
-        )}
-        <View style={styles.scrim} />
-        {h.itemCount ? (
-          <View style={styles.countPill}>
-            <Ionicons name="images" size={11} color="#fff" />
-            <Text style={styles.countText}>{h.itemCount}</Text>
-          </View>
-        ) : null}
-        <View style={styles.meta}>
-          {h.icon ? <Ionicons name={h.icon as any} size={15} color="#fff" /> : null}
-          <Text style={styles.cardTitle} numberOfLines={2}>
-            {h.title}
-          </Text>
-        </View>
-      </Pressable>
-    ),
-    [router, confirmDelete],
+        </Pressable>
+      );
+    },
+    [router, openMenu, pack],
   );
 
   const list = saved.data ?? [];
@@ -243,6 +286,19 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
   },
   countText: { color: '#fff', fontSize: 11, fontWeight: '700' },
+  busy: {
+    position: 'absolute',
+    top: spacing(2),
+    right: spacing(2),
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing(1.5),
+    backgroundColor: colors.overlay,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing(2.5),
+    paddingVertical: 4,
+  },
+  busyText: { color: '#fff', fontSize: 11, fontWeight: '700' },
   meta: {
     position: 'absolute',
     left: spacing(3),

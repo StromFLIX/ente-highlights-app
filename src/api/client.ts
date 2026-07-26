@@ -9,6 +9,7 @@ import type {
   SavedHighlight,
   SavedItemsResponse,
   ScoringConfig,
+  ShareLink,
   SyncStatus,
 } from './types';
 
@@ -151,6 +152,20 @@ export const api = {
     }),
   savedDelete: (id: string) =>
     request<void>(`/api/highlights/saved/${id}`, { method: 'DELETE' }),
+
+  shareList: (id: string) =>
+    request<{ shares: ShareLink[] }>(`/api/highlights/saved/${id}/shares`).then(
+      (r) => r.shares,
+    ),
+  // The secret is in this response and nowhere else -- the server only keeps a
+  // hash, so a link that isn't captured here can never be recovered.
+  shareCreate: (id: string, input?: { label?: string; allowDownload?: boolean }) =>
+    request<ShareLink>(`/api/highlights/saved/${id}/shares`, {
+      method: 'POST',
+      body: JSON.stringify({ allowDownload: true, ...input }),
+    }),
+  shareRevoke: (id: string, linkId: string) =>
+    request<void>(`/api/highlights/saved/${id}/shares/${linkId}`, { method: 'DELETE' }),
 
   people: () =>
     request<{ people: Person[] }>('/api/people', undefined, { timeoutMs: MEDIUM_TIMEOUT_MS }).then(
