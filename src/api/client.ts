@@ -1,4 +1,5 @@
 import { useAuth } from '@/state/auth';
+import { DEMO, demoPhotoUrl, demoRequest } from './demo';
 import type {
   Album,
   HighlightDefinition,
@@ -57,12 +58,17 @@ function base(): string {
 
 /** Absolute URL for a relative API path (e.g. an image's /media/... path). */
 export function absoluteUrl(path: string): string {
+  if (DEMO && path.startsWith('/media/')) {
+    return demoPhotoUrl(path, path.endsWith('/thumbnail') ? 'thumb' : 'full');
+  }
   if (/^https?:\/\//.test(path)) return path;
   return `${base()}${path.startsWith('/') ? '' : '/'}${path}`;
 }
 
 /** expo-image source with the auth header attached. */
 export function mediaSource(path: string) {
+  // Fixture photos are public URLs; sending a fake bearer token would break them.
+  if (DEMO) return { uri: absoluteUrl(path) };
   const token = useAuth.getState().token;
   return {
     uri: absoluteUrl(path),
@@ -77,6 +83,7 @@ async function request<T>(
   init?: RequestInit,
   { timeoutMs = DEFAULT_TIMEOUT_MS, retry = true }: RequestOptions = {},
 ): Promise<T> {
+  if (DEMO) return demoRequest<T>(path, init);
   const token = useAuth.getState().token;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);

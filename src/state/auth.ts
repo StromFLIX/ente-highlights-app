@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import * as Storage from '@/lib/storage';
+import { DEMO } from '@/api/demo';
 
 const DEFAULT_BASE_URL = 'https://highlights.ente.stromflix.com';
 
@@ -83,6 +84,12 @@ export const useAuth = create<AuthState>((set, get) => ({
   isAuthed: false,
 
   hydrate: async () => {
+    // Fixture mode has no backend to authenticate against, so skip straight to
+    // a signed-in session -- otherwise every screen is behind the login wall.
+    if (DEMO) {
+      set({ ready: true, token: 'demo', email: 'demo@example.com', isAuthed: true });
+      return;
+    }
     const [base, token, email] = await Promise.all([
       Storage.getItem(KEY.base),
       Storage.getItem(KEY.token),

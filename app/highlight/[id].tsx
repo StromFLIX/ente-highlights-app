@@ -14,7 +14,7 @@ export default function HighlightGallery() {
 
   const query = useQuery({ queryKey: ['saved-items', id], queryFn: () => api.savedItems(id) });
   const items = useMemo<ImageItem[]>(() => query.data?.items ?? [], [query.data]);
-  const title = query.data?.highlight.title ?? 'Highlight';
+  const title = query.data?.highlight?.title ?? 'Highlight';
 
   if (query.isLoading) {
     return (

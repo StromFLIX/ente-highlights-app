@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import { useCallback } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -16,6 +17,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { api, errorMessage } from '@/api/client';
 import type { SavedHighlight } from '@/api/types';
+import { BottomSheet, type SheetAction } from '@/components/BottomSheet';
 import { CollageCover } from '@/components/CollageCover';
 import { Empty, ErrorState, Loading } from '@/components/ui';
 import { useAlbumActions } from '@/hooks/useAlbumActions';
@@ -67,29 +69,37 @@ export default function Home() {
   );
 
   // Long-press used to delete outright, which made destruction the only hidden
-  // action and left sharing/saving undiscoverable. It now opens a menu.
-  // Android alerts cap out at three buttons, hence the second level.
-  const openMore = useCallback(
-    (h: SavedHighlight) => {
-      Alert.alert(h.title, undefined, [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Stop sharing', onPress: () => revokeLinks(h) },
-        { text: 'Delete album', style: 'destructive', onPress: () => confirmDelete(h) },
-      ]);
-    },
-    [revokeLinks, confirmDelete],
-  );
+  // action and left sharing/saving undiscoverable.
+  const [menuFor, setMenuFor] = useState<SavedHighlight | null>(null);
 
-  const openMenu = useCallback(
-    (h: SavedHighlight) => {
-      Alert.alert(h.title, `${h.itemCount} photos`, [
-        { text: 'Share link…', onPress: () => shareAlbum(h) },
-        { text: 'Save all to gallery', onPress: () => savePack(h) },
-        { text: 'More…', onPress: () => openMore(h) },
-      ]);
-    },
-    [shareAlbum, savePack, openMore],
-  );
+  const menuActions = useMemo((): SheetAction[] => {
+    const h = menuFor;
+    if (!h) return [];
+    return [
+      {
+        label: 'Share link',
+        icon: 'link-outline',
+        detail: 'Anyone with the link can view this album',
+        onPress: () => shareAlbum(h),
+      },
+      {
+        label: 'Save all to gallery',
+        icon: 'download-outline',
+        detail: h.itemCount
+          ? `${h.itemCount} ${h.itemCount === 1 ? 'photo' : 'photos'} to your camera roll`
+          : undefined,
+        onPress: () => savePack(h),
+        disabled: !h.itemCount,
+      },
+      { label: 'Stop sharing', icon: 'unlink-outline', onPress: () => revokeLinks(h) },
+      {
+        label: 'Delete album',
+        icon: 'trash-outline',
+        destructive: true,
+        onPress: () => confirmDelete(h),
+      },
+    ];
+  }, [menuFor, shareAlbum, savePack, revokeLinks, confirmDelete]);
 
   const renderCard = useCallback(
     ({ item: h }: { item: SavedHighlight }) => {
@@ -102,9 +112,9 @@ export default function Home() {
       const busy = pack?.id === h.id ? pack : null;
       return (
         <Pressable
-          style={styles.card}
+          style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
           onPress={() => router.push(`/highlight/${h.id}`)}
-          onLongPress={() => openMenu(h)}
+          onLongPress={() => setMenuFor(h)}
           delayLongPress={350}
         >
           {previews.length ? (
@@ -114,7 +124,14 @@ export default function Home() {
               <Ionicons name="sparkles" size={28} color={colors.textFaint} />
             </View>
           )}
-          <View style={styles.scrim} />
+          {/* A gradient, not a slab: a flat scrim leaves a hard seam straight
+              across the photo, which is the single most dated thing on a cover. */}
+          <LinearGradient
+            colors={['transparent', 'rgba(0,0,0,0.15)', 'rgba(0,0,0,0.78)']}
+            locations={[0, 0.45, 1]}
+            style={styles.scrim}
+            pointerEvents="none"
+          />
           {busy ? (
             <View style={styles.busy}>
               <ActivityIndicator size="small" color="#fff" />
@@ -122,22 +139,32 @@ export default function Home() {
                 {busy.done}/{busy.total}
               </Text>
             </View>
-          ) : h.itemCount ? (
-            <View style={styles.countPill}>
-              <Ionicons name="images" size={11} color="#fff" />
-              <Text style={styles.countText}>{h.itemCount}</Text>
-            </View>
           ) : null}
+          {/* Every other action was behind a long-press, which is invisible.
+              This makes the menu discoverable without a second tap target on
+              the card body. */}
+          <Pressable
+            style={styles.more}
+            onPress={() => setMenuFor(h)}
+            hitSlop={8}
+            accessibilityLabel={`Actions for ${h.title}`}
+          >
+            <Ionicons name="ellipsis-horizontal" size={16} color="#fff" />
+          </Pressable>
           <View style={styles.meta}>
-            {h.icon ? <Ionicons name={h.icon as any} size={15} color="#fff" /> : null}
-            <Text style={styles.cardTitle} numberOfLines={2}>
+            <Text style={styles.cardTitle} numberOfLines={1}>
               {h.title}
+            </Text>
+            <Text style={styles.cardSub} numberOfLines={1}>
+              {h.itemCount
+                ? `${h.itemCount} ${h.itemCount === 1 ? 'photo' : 'photos'}`
+                : 'Not resolved yet'}
             </Text>
           </View>
         </Pressable>
       );
     },
-    [router, openMenu, pack],
+    [router, pack],
   );
 
   const list = saved.data ?? [];
@@ -224,6 +251,18 @@ export default function Home() {
         <Ionicons name="add" size={22} color={colors.text} />
         <Text style={styles.fabText}>Create</Text>
       </Pressable>
+
+      <BottomSheet
+        visible={!!menuFor}
+        title={menuFor?.title}
+        subtitle={
+          menuFor?.itemCount
+            ? `${menuFor.itemCount} ${menuFor.itemCount === 1 ? 'photo' : 'photos'}`
+            : undefined
+        }
+        actions={menuActions}
+        onClose={() => setMenuFor(null)}
+      />
     </SafeAreaView>
   );
 }
@@ -260,9 +299,8 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     overflow: 'hidden',
     backgroundColor: colors.surface2,
-    borderWidth: 1,
-    borderColor: colors.border,
   },
+  cardPressed: { opacity: 0.85 },
   cover: { ...StyleSheet.absoluteFillObject },
   coverEmpty: { alignItems: 'center', justifyContent: 'center' },
   scrim: {
@@ -270,26 +308,25 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    height: 96,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    // Tall and soft: the fade has to start well above the text or the ramp
+    // itself becomes a visible band.
+    height: '62%',
   },
-  countPill: {
+  more: {
     position: 'absolute',
-    top: spacing(2),
-    right: spacing(2),
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    backgroundColor: colors.overlay,
+    top: spacing(1.5),
+    right: spacing(1.5),
+    width: 30,
+    height: 30,
     borderRadius: radius.pill,
-    paddingHorizontal: spacing(2),
-    paddingVertical: 3,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.35)',
   },
-  countText: { color: '#fff', fontSize: 11, fontWeight: '700' },
   busy: {
     position: 'absolute',
     top: spacing(2),
-    right: spacing(2),
+    left: spacing(2),
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing(1.5),
@@ -304,11 +341,11 @@ const styles = StyleSheet.create({
     left: spacing(3),
     right: spacing(3),
     bottom: spacing(3),
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing(1.5),
   },
-  cardTitle: { ...typography.title, color: '#fff', flex: 1, fontSize: 15 },
+  // One line, always. Two-line titles made neighbouring cards disagree about
+  // where their text sat, which read as misalignment rather than variety.
+  cardTitle: { ...typography.title, color: '#fff', fontSize: 15 },
+  cardSub: { ...typography.caption, color: 'rgba(255,255,255,0.72)', marginTop: 1 },
   emptyWrap: { marginTop: spacing(16), alignItems: 'center' },
   emptyHint: {
     ...typography.body,

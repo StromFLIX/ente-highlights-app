@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Animated,
   Dimensions,
   FlatList,
   Modal,
@@ -16,6 +17,7 @@ import {
 } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
 import { api } from '@/api/client';
 import type { ImageItem } from '@/api/types';
 import { saveOne, shareOne, downloadPack } from '@/lib/download';
@@ -52,6 +54,18 @@ export function ImageViewer({
   const [dlAll, setDlAll] = useState<{ done: number; total: number } | null>(null);
   const [stackId, setStackId] = useState<string | null>(null);
   const [zoomed, setZoomed] = useState(false);
+  // The photo is the content; the controls are not. Tapping hides them so the
+  // image can be looked at edge-to-edge, which is the whole point of opening it.
+  const [chrome, setChrome] = useState(true);
+  const chromeAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    Animated.timing(chromeAnim, {
+      toValue: chrome ? 1 : 0,
+      duration: 180,
+      useNativeDriver: true,
+    }).start();
+  }, [chrome, chromeAnim]);
   // Where the timeline pager sat before opening a stack, to restore on exit.
   const savedIndexRef = useRef(index);
 
@@ -185,12 +199,34 @@ export function ImageViewer({
                 path={item.fullUrl}
                 placeholderPath={item.thumbnailUrl}
                 onZoomChange={setZoomed}
+                onTap={() => setChrome((v) => !v)}
               />
             </View>
           )}
         />
 
-        <SafeAreaView style={styles.topBar} pointerEvents="box-none" edges={['top']}>
+        {/* Scrims, not bars. White glyphs sat straight on the photo before, so a
+            bright sky made every control vanish; an opaque bar would instead
+            letterbox the photo. A gradient protects the icons and stays out of
+            the way. */}
+        <Animated.View
+          style={[styles.chrome, { opacity: chromeAnim }]}
+          // Opacity alone still leaves the buttons tappable, so a tap meant to
+          // bring the chrome back would instead hit the invisible close button.
+          pointerEvents={chrome ? 'box-none' : 'none'}
+        >
+          <LinearGradient
+            colors={['rgba(0,0,0,0.62)', 'transparent']}
+            style={styles.scrimTop}
+            pointerEvents="none"
+          />
+          <LinearGradient
+            colors={['transparent', 'rgba(0,0,0,0.72)']}
+            style={styles.scrimBottom}
+            pointerEvents="none"
+          />
+
+          <SafeAreaView style={styles.topBar} pointerEvents="box-none" edges={['top']}>
           <Pressable style={styles.iconBtn} hitSlop={10} onPress={inStack ? exitStack : onClose}>
             <Ionicons name={inStack ? 'arrow-back' : 'close'} size={26} color="#fff" />
           </Pressable>
@@ -232,19 +268,20 @@ export function ImageViewer({
               )}
             </Pressable>
           </View>
-        </SafeAreaView>
-
-        {current ? (
-          <SafeAreaView style={styles.bottom} pointerEvents="none" edges={['bottom']}>
-            <Text style={styles.caption} numberOfLines={1}>
-              {inStack ? 'Stack' : (current.title ?? '')}
-            </Text>
-            <Text style={styles.sub}>
-              {i + 1} / {data.length}
-              {!inStack && current.album ? ` · ${current.album}` : ''}
-            </Text>
           </SafeAreaView>
-        ) : null}
+
+          {current ? (
+            <SafeAreaView style={styles.bottom} pointerEvents="none" edges={['bottom']}>
+              <Text style={styles.caption} numberOfLines={1}>
+                {inStack ? 'Stack' : (current.title ?? '')}
+              </Text>
+              <Text style={styles.sub}>
+                {i + 1} / {data.length}
+                {!inStack && current.album ? ` · ${current.album}` : ''}
+              </Text>
+            </SafeAreaView>
+          ) : null}
+        </Animated.View>
 
         {stackId && stack.isLoading ? (
           <View style={styles.stackLoading} pointerEvents="none">
@@ -259,6 +296,9 @@ export function ImageViewer({
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#000' },
   page: { width: SCREEN_W, height: SCREEN_H },
+  chrome: { ...StyleSheet.absoluteFillObject },
+  scrimTop: { position: 'absolute', top: 0, left: 0, right: 0, height: 150 },
+  scrimBottom: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 190 },
   topBar: {
     position: 'absolute',
     top: 0,

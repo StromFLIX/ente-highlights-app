@@ -5,7 +5,7 @@ import type { Query } from '@tanstack/react-query';
 import { ApiError } from '@/api/client';
 
 /** Bump to invalidate every persisted cache (e.g. after a response shape change). */
-const CACHE_BUSTER = 'v1';
+const CACHE_BUSTER = 'v2';
 const MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 /**

@@ -14,13 +14,17 @@ import { colors } from '@/theme';
  * The layout is picked from the highlight's id, not at random: a card must
  * look identical across re-renders and list recycling, or it visibly reshuffles
  * while you scroll.
+ *
+ * No layout puts the hero along the bottom edge. The card's caption gradient
+ * darkens the lower half, so a bottom hero is the one tile guaranteed to be
+ * obscured -- exactly backwards.
  */
 
 const GAP = 2;
 
-type Layout = 'heroTop' | 'heroLeft' | 'heroBottom';
+type Layout = 'heroTop' | 'heroLeft' | 'heroRight';
 
-const LAYOUTS: Layout[] = ['heroTop', 'heroLeft', 'heroBottom'];
+const LAYOUTS: Layout[] = ['heroTop', 'heroLeft', 'heroRight'];
 
 /** Small deterministic string hash (FNV-1a), so a given card always matches. */
 function hashString(s: string): number {
@@ -65,7 +69,7 @@ function renderTiles(paths: string[], layout: Layout) {
   if (layout === 'heroLeft') {
     return (
       <View style={styles.row}>
-        <Tile path={a} flex={1.9} />
+        <Tile path={a} flex={2.1} />
         <View style={styles.gapV} />
         <View style={styles.col}>
           <Tile path={b} flex={1} />
@@ -76,23 +80,23 @@ function renderTiles(paths: string[], layout: Layout) {
     );
   }
 
-  if (layout === 'heroBottom') {
+  if (layout === 'heroRight') {
     return (
-      <>
-        <View style={styles.row}>
+      <View style={styles.row}>
+        <View style={styles.col}>
           <Tile path={b} flex={1} />
-          <View style={styles.gapV} />
+          <View style={styles.gapH} />
           <Tile path={c} flex={1} />
         </View>
-        <View style={styles.gapH} />
-        <Tile path={a} flex={1.7} />
-      </>
+        <View style={styles.gapV} />
+        <Tile path={a} flex={2.1} />
+      </View>
     );
   }
 
   return (
     <>
-      <Tile path={a} flex={1.7} />
+      <Tile path={a} flex={2.1} />
       <View style={styles.gapH} />
       <View style={styles.row}>
         <Tile path={b} flex={1} />

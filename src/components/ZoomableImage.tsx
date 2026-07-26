@@ -13,10 +13,12 @@ type Props = {
   placeholderPath?: string;
   /** Fires when the image becomes zoomed-in (true) or returns to fit (false). */
   onZoomChange?: (zoomed: boolean) => void;
+  /** Fires on a confirmed single tap, i.e. only once double-tap has failed. */
+  onTap?: () => void;
 };
 
 /** Full-screen image with pinch-to-zoom, pan-when-zoomed, and double-tap reset. */
-export function ZoomableImage({ path, placeholderPath, onZoomChange }: Props) {
+export function ZoomableImage({ path, placeholderPath, onZoomChange, onTap }: Props) {
   const scale = useSharedValue(1);
   const savedScale = useSharedValue(1);
   const tx = useSharedValue(0);
@@ -82,7 +84,17 @@ export function ZoomableImage({ path, placeholderPath, onZoomChange }: Props) {
       }
     });
 
-  const gesture = Gesture.Race(doubleTap, Gesture.Simultaneous(pinch, pan));
+  const singleTap = Gesture.Tap()
+    .numberOfTaps(1)
+    .onEnd((_e, success) => {
+      if (success && onTap) runOnJS(onTap)();
+    });
+
+  // Exclusive, not Race: a single tap must wait for the double-tap to fail,
+  // otherwise every zoom gesture also toggles the chrome on its first tap.
+  const taps = Gesture.Exclusive(doubleTap, singleTap);
+
+  const gesture = Gesture.Race(taps, Gesture.Simultaneous(pinch, pan));
 
   const animatedStyle = useAnimatedStyle(() => ({
     width: '100%',
