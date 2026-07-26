@@ -1,11 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
-import { api } from '@/api/client';
+import { StyleSheet, Text, View } from 'react-native';
+import { api, errorMessage } from '@/api/client';
 import type { ImageItem } from '@/api/types';
 import { ImageViewer } from '@/components/ImageViewer';
-import { Button } from '@/components/ui';
+import { Button, ErrorState, Loading } from '@/components/ui';
 import { colors, spacing, typography } from '@/theme';
 
 export default function HighlightGallery() {
@@ -19,7 +19,21 @@ export default function HighlightGallery() {
   if (query.isLoading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator color={colors.primary2} />
+        <Loading label="Curating this highlight…" />
+        <Button label="Back" icon="arrow-back" variant="ghost" onPress={() => router.back()} />
+      </View>
+    );
+  }
+
+  if (query.isError) {
+    return (
+      <View style={styles.center}>
+        <ErrorState
+          message={errorMessage(query.error)}
+          onRetry={() => query.refetch()}
+          retrying={query.isFetching}
+        />
+        <Button label="Back" icon="arrow-back" variant="ghost" onPress={() => router.back()} />
       </View>
     );
   }

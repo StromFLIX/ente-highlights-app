@@ -207,6 +207,50 @@ export function Empty({ icon, text }: { icon: keyof typeof Ionicons.glyphMap; te
   );
 }
 
+/** Spinner + label. Always say what is loading so the app never looks hung. */
+export function Loading({ label, style }: { label?: string; style?: ViewStyle }) {
+  return (
+    <View style={[styles.empty, style]}>
+      <ActivityIndicator color={colors.primary2} />
+      {label ? (
+        <Text style={[typography.body, { color: colors.textDim, marginTop: spacing(3) }]}>
+          {label}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
+/** Failure state with the reason and a retry affordance. */
+export function ErrorState({
+  message,
+  onRetry,
+  retrying,
+  style,
+}: {
+  message: string;
+  onRetry?: () => void;
+  retrying?: boolean;
+  style?: ViewStyle;
+}) {
+  return (
+    <View style={[styles.empty, style]}>
+      <Ionicons name="cloud-offline-outline" size={40} color={colors.warning} />
+      <Text style={styles.errorText}>{message}</Text>
+      {onRetry ? (
+        <Button
+          label={retrying ? 'Retrying…' : 'Try again'}
+          icon="refresh"
+          variant="ghost"
+          loading={retrying}
+          onPress={onRetry}
+          style={{ marginTop: spacing(4) }}
+        />
+      ) : null}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   btn: {
     borderRadius: radius.md,
@@ -267,4 +311,10 @@ const styles = StyleSheet.create({
   toggle: { width: 46, height: 28, borderRadius: 14, padding: 3, justifyContent: 'center' },
   toggleKnob: { width: 22, height: 22, borderRadius: 11, backgroundColor: '#fff' },
   empty: { alignItems: 'center', justifyContent: 'center', padding: spacing(10) },
+  errorText: {
+    ...typography.body,
+    color: colors.textDim,
+    textAlign: 'center',
+    marginTop: spacing(3),
+  },
 });

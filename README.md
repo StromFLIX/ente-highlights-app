@@ -83,3 +83,33 @@ Or just copy the `.apk` to the phone and open it (enable "install unknown apps")
 > Play-Store-ready. App id: `com.stromflix.entehighlights`. For a Play-signed
 > bundle use `eas build --profile production --platform android` (produces an `.aab`).
 
+## Offline behaviour and caching
+
+Server state is React Query, persisted to `AsyncStorage` so a cold start paints from
+cache instead of a spinner. Only stable keys are persisted (`saved`, `saved-items`,
+`people`, `terms`, `config`, `sync`) — previews and cluster lookups are always refetched.
+Connectivity is tracked with NetInfo via React Query's `onlineManager`, so queries pause
+offline, resume on reconnect, and an **offline banner** explains that results are cached.
+
+Signing out — or pointing the app at a different API base URL — clears the persisted
+cache. If you change what a cached key contains, bump `CACHE_BUSTER` in
+[src/lib/query.ts](src/lib/query.ts).
+
+## Regenerating the icon and splash
+
+App artwork is generated from the vendored Ente Photos launcher icon in `assets/vendor/`
+with a sparkle badge added, mirroring the heart badge's placement, tilt, outline, shadow
+and specular highlight.
+
+```bash
+uv venv /tmp/.imgvenv
+uv pip install --python /tmp/.imgvenv/bin/python pillow
+
+/tmp/.imgvenv/bin/python scripts/make_assets.py            # writes assets/*.png
+/tmp/.imgvenv/bin/python scripts/make_assets.py --preview  # contact sheet of style variants
+```
+
+This writes `icon.png`, `adaptive-icon.png`, `splash-icon.png` and `favicon.png`. Re-run
+`npx expo prebuild --platform android --clean` afterwards so the Android launcher icons
+are regenerated.
+

@@ -12,6 +12,44 @@ import type {
   SyncStatus,
 } from './types';
 
+/** Normal API calls: fail fast so the UI never spins forever. */
+const DEFAULT_TIMEOUT_MS = 15_000;
+/** Plain DB aggregates that can still be slow on a cold pool or a big library. */
+const MEDIUM_TIMEOUT_MS = 30_000;
+/** Calls that legitimately do heavy server-side work (embedding + scoring). */
+const LONG_TIMEOUT_MS = 90_000;
+
+export type ApiErrorKind = 'timeout' | 'network' | 'auth' | 'http';
+
+export class ApiError extends Error {
+  kind: ApiErrorKind;
+  status?: number;
+
+  constructor(kind: ApiErrorKind, message: string, status?: number) {
+    super(message);
+    this.name = 'ApiError';
+    this.kind = kind;
+    this.status = status;
+  }
+}
+
+/** Short, user-facing text for any thrown error. */
+export function errorMessage(err: unknown): string {
+  if (err instanceof ApiError) {
+    switch (err.kind) {
+      case 'timeout':
+        return 'The server took too long to respond.';
+      case 'network':
+        return `Can't reach ${base()}. Check your connection or the server URL in Settings.`;
+      case 'auth':
+        return 'Your session expired. Please sign in again.';
+      default:
+        return err.message || `Request failed (${err.status ?? '?'}).`;
+    }
+  }
+  return err instanceof Error ? err.message : 'Something went wrong.';
+}
+
 function base(): string {
   return useAuth.getState().baseUrl.replace(/\/$/, '');
 }
@@ -31,20 +69,42 @@ export function mediaSource(path: string) {
   };
 }
 
-async function request<T>(path: string, init?: RequestInit, retry = true): Promise<T> {
+type RequestOptions = { timeoutMs?: number; retry?: boolean };
+
+async function request<T>(
+  path: string,
+  init?: RequestInit,
+  { timeoutMs = DEFAULT_TIMEOUT_MS, retry = true }: RequestOptions = {},
+): Promise<T> {
   const token = useAuth.getState().token;
-  const res = await fetch(absoluteUrl(path), {
-    ...init,
-    headers: {
-      ...(init?.body ? { 'content-type': 'application/json' } : {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(init?.headers || {}),
-    },
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  let res: Response;
+  try {
+    res = await fetch(absoluteUrl(path), {
+      ...init,
+      signal: controller.signal,
+      headers: {
+        ...(init?.body ? { 'content-type': 'application/json' } : {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(init?.headers || {}),
+      },
+    });
+  } catch (e) {
+    // An abort here is always ours: the request outlived `timeoutMs`.
+    if (controller.signal.aborted) {
+      throw new ApiError('timeout', `Timed out after ${Math.round(timeoutMs / 1000)}s`);
+    }
+    throw new ApiError('network', e instanceof Error ? e.message : 'Network request failed');
+  } finally {
+    clearTimeout(timer);
+  }
 
   if (res.status === 401 && retry) {
     const ok = await useAuth.getState().silentRelogin();
-    if (ok) return request<T>(path, init, false);
+    if (ok) return request<T>(path, init, { timeoutMs, retry: false });
+    throw new ApiError('auth', 'Session expired', 401);
   }
   if (!res.ok) {
     let detail = '';
@@ -54,7 +114,11 @@ async function request<T>(path: string, init?: RequestInit, retry = true): Promi
     } catch {
       detail = await res.text().catch(() => '');
     }
-    throw new Error(`${res.status} ${detail}`.trim());
+    throw new ApiError(
+      res.status === 401 ? 'auth' : 'http',
+      `${res.status} ${detail}`.trim(),
+      res.status,
+    );
   }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
@@ -68,10 +132,11 @@ export const api = {
     request<{ items: ImageItem[]; count: number }>(`/api/clusters/${clusterId}`),
 
   preview: (definition: HighlightDefinition) =>
-    request<PreviewResponse>('/api/highlights/preview', {
-      method: 'POST',
-      body: JSON.stringify(definition),
-    }),
+    request<PreviewResponse>(
+      '/api/highlights/preview',
+      { method: 'POST', body: JSON.stringify(definition) },
+      { timeoutMs: LONG_TIMEOUT_MS },
+    ),
 
   savedList: () =>
     request<{ highlights: SavedHighlight[] }>('/api/highlights/saved').then((r) => r.highlights),
@@ -80,11 +145,17 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(input),
     }),
-  savedItems: (id: string) => request<SavedItemsResponse>(`/api/highlights/saved/${id}/items`),
+  savedItems: (id: string) =>
+    request<SavedItemsResponse>(`/api/highlights/saved/${id}/items`, undefined, {
+      timeoutMs: LONG_TIMEOUT_MS,
+    }),
   savedDelete: (id: string) =>
     request<void>(`/api/highlights/saved/${id}`, { method: 'DELETE' }),
 
-  people: () => request<{ people: Person[] }>('/api/people').then((r) => r.people),
+  people: () =>
+    request<{ people: Person[] }>('/api/people', undefined, { timeoutMs: MEDIUM_TIMEOUT_MS }).then(
+      (r) => r.people,
+    ),
   albums: () => request<{ albums: Album[] }>('/api/albums').then((r) => r.albums),
 
   syncStatus: () => request<SyncStatus>('/api/sync/status'),

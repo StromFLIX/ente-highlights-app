@@ -3,6 +3,7 @@ import { Image, type ImageContentFit } from 'expo-image';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View, type ViewStyle } from 'react-native';
 import { mediaSource } from '@/api/client';
+import { useAuth } from '@/state/auth';
 import { colors } from '@/theme';
 
 const blurhash = 'L6Pj0^jE.AyE_3t7t7R**0o#DgR4';
@@ -30,6 +31,8 @@ export function AuthedImage({
   const [attempt, setAttempt] = useState(0);
   const [status, setStatus] = useState<'loading' | 'loaded' | 'error'>('loading');
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Media URLs carry the bearer token, so a silent relogin must re-issue them.
+  const token = useAuth((s) => s.token);
 
   // Auto-retry transient failures with a small backoff so images don't stay blank.
   useEffect(() => {
@@ -43,11 +46,11 @@ export function AuthedImage({
 
   // Reset when the underlying image changes (e.g. a recycled SectionList cell),
   // so a previously errored/loaded cell reloads the new thumbnail instead of
-  // staying blank until tapped.
+  // staying blank until tapped. A new token has the same effect.
   useEffect(() => {
     setAttempt(0);
     setStatus('loading');
-  }, [path]);
+  }, [path, token]);
 
   return (
     <View style={[styles.wrap, style]}>

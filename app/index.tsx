@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useCallback } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Dimensions,
   FlatList,
@@ -13,10 +14,11 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { api } from '@/api/client';
+import { api, errorMessage } from '@/api/client';
 import type { SavedHighlight } from '@/api/types';
 import { AuthedImage } from '@/components/AuthedImage';
-import { Empty } from '@/components/ui';
+import { Empty, ErrorState, Loading } from '@/components/ui';
+import { useAuth } from '@/state/auth';
 import { colors, radius, spacing, typography } from '@/theme';
 
 const COLS = 2;
@@ -28,9 +30,16 @@ const CARD_H = Math.round(CARD_W * 1.3);
 export default function Home() {
   const router = useRouter();
   const qc = useQueryClient();
+  const isAuthed = useAuth((s) => s.isAuthed);
 
-  const saved = useQuery({ queryKey: ['saved'], queryFn: api.savedList });
-  const sync = useQuery({ queryKey: ['sync'], queryFn: api.syncStatus });
+  const saved = useQuery({ queryKey: ['saved'], queryFn: api.savedList, enabled: isAuthed });
+  const sync = useQuery({
+    queryKey: ['sync'],
+    queryFn: api.syncStatus,
+    enabled: isAuthed,
+    // Poll while the server is still ingesting so progress actually moves.
+    refetchInterval: (q) => (q.state.data?.state === 'syncing' ? 5_000 : false),
+  });
 
   const onRefresh = useCallback(() => {
     qc.invalidateQueries({ queryKey: ['saved'] });
@@ -89,21 +98,32 @@ export default function Home() {
   );
 
   const list = saved.data ?? [];
+  const syncing = sync.data?.state === 'syncing';
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <View>
+        <View style={styles.headerTitle}>
           <Text style={typography.h1}>Highlights</Text>
           {sync.data ? (
-            <Text style={styles.sub}>
-              {sync.data.embeddedImages}/{sync.data.totalImages} photos · {sync.data.state}
-            </Text>
+            <View style={styles.syncRow}>
+              {syncing ? <ActivityIndicator size="small" color={colors.primary2} /> : null}
+              <Text style={styles.sub}>
+                {sync.data.state === 'error'
+                  ? `Sync failed: ${sync.data.lastError ?? 'unknown error'}`
+                  : `${sync.data.embeddedImages}/${sync.data.totalImages} photos analysed${
+                      syncing ? ' · syncing…' : ''
+                    }`}
+              </Text>
+            </View>
+          ) : sync.isLoading ? (
+            <Text style={styles.sub}>Checking your library…</Text>
           ) : null}
         </View>
         <View style={styles.headerActions}>
           <Pressable
             style={styles.iconBtn}
+            disabled={syncing}
             onPress={() =>
               api
                 .syncTrigger()
@@ -111,10 +131,10 @@ export default function Home() {
                   sync.refetch();
                   Alert.alert('Sync started', 'New photos are being fetched and analysed.');
                 })
-                .catch(() => Alert.alert('Sync unavailable', 'Could not reach the sync service.'))
+                .catch((e) => Alert.alert('Sync unavailable', errorMessage(e)))
             }
           >
-            <Ionicons name="sync" size={18} color={colors.text} />
+            <Ionicons name="sync" size={18} color={syncing ? colors.textFaint : colors.text} />
           </Pressable>
           <Pressable style={styles.iconBtn} onPress={() => router.push('/settings')}>
             <Ionicons name="settings-outline" size={18} color={colors.text} />
@@ -137,7 +157,16 @@ export default function Home() {
           />
         }
         ListEmptyComponent={
-          saved.isLoading ? null : (
+          saved.isLoading ? (
+            <Loading label="Loading your highlights…" style={styles.stateBlock} />
+          ) : saved.isError ? (
+            <ErrorState
+              message={errorMessage(saved.error)}
+              onRetry={() => saved.refetch()}
+              retrying={saved.isFetching}
+              style={styles.stateBlock}
+            />
+          ) : (
             <View style={styles.emptyWrap}>
               <Empty icon="sparkles-outline" text="No highlights yet." />
               <Text style={styles.emptyHint}>
@@ -165,7 +194,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: PAD,
     paddingBottom: spacing(2),
   },
-  sub: { ...typography.caption, marginTop: 2 },
+  sub: { ...typography.caption, marginTop: 2, flexShrink: 1 },
+  headerTitle: { flex: 1, paddingRight: spacing(2) },
+  syncRow: { flexDirection: 'row', alignItems: 'center', gap: spacing(1.5) },
+  stateBlock: { marginTop: spacing(16) },
   headerActions: { flexDirection: 'row', gap: spacing(2) },
   iconBtn: {
     width: 38,

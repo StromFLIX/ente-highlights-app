@@ -14,11 +14,21 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { api } from '@/api/client';
+import { api, errorMessage } from '@/api/client';
 import type { ImageItem, Person, QualityTerm } from '@/api/types';
 import { AuthedImage } from '@/components/AuthedImage';
 import { ImageViewer } from '@/components/ImageViewer';
-import { Button, Card, Chip, Field, SectionHeader, Segmented, SliderRow, Toggle } from '@/components/ui';
+import {
+  Button,
+  Card,
+  Chip,
+  ErrorState,
+  Field,
+  SectionHeader,
+  Segmented,
+  SliderRow,
+  Toggle,
+} from '@/components/ui';
 import { useBuilder } from '@/state/builder';
 import { colors, radius, spacing, typography } from '@/theme';
 
@@ -113,6 +123,10 @@ export default function Create() {
   const negatives = terms.data?.terms.filter((t: QualityTerm) => !t.positive) ?? [];
   const wr = terms.data?.weightRange ?? { min: -2, max: 2, step: 0.1 };
   const items = preview.data?.items ?? [];
+  // Without terms + config the builder never initialises, which would leave the
+  // preview button permanently disabled with no explanation.
+  const setupError = terms.isError || config.isError;
+  const peopleError = people.isError;
 
   const filteredPeople = useMemo(() => {
     const all: Person[] = people.data ?? [];
@@ -186,7 +200,14 @@ export default function Create() {
               />
             </View>
           ) : null}
-          {filteredPeople.length === 0 ? (
+          {peopleError ? (
+            <ErrorState
+              message={errorMessage(people.error)}
+              onRetry={() => people.refetch()}
+              retrying={people.isFetching}
+              style={styles.inlineState}
+            />
+          ) : filteredPeople.length === 0 ? (
             <Text style={styles.hint}>
               {people.isLoading ? 'Loading people…' : 'No named people found.'}
             </Text>
@@ -399,7 +420,11 @@ export default function Create() {
               <Text style={styles.count}>{items.length}</Text>
             ) : null}
           </View>
-          {preview.isError ? <Text style={styles.err}>Preview failed</Text> : null}
+          {preview.isError ? (
+            <Text style={styles.err} numberOfLines={2}>
+              {errorMessage(preview.error)}
+            </Text>
+          ) : null}
         </View>
         {searchKey && stale && !preview.isFetching ? (
           <Text style={styles.staleHint}>Filters changed — run the search again.</Text>
@@ -430,12 +455,34 @@ export default function Create() {
       </ScrollView>
 
       <View style={styles.fab}>
+        {setupError ? (
+          <Text style={styles.err} numberOfLines={2}>
+            {errorMessage(terms.error ?? config.error)}
+          </Text>
+        ) : null}
         <Button
-          label={preview.isFetching ? 'Searching…' : searchKey && !stale ? 'Refresh preview' : 'Run preview'}
-          icon="search"
-          onPress={runPreview}
-          loading={preview.isFetching}
-          disabled={!b.initialized}
+          label={
+            preview.isFetching
+              ? 'Searching…'
+              : setupError
+                ? 'Retry connecting'
+                : !b.initialized
+                  ? 'Loading settings…'
+                  : searchKey && !stale
+                    ? 'Refresh preview'
+                    : 'Run preview'
+          }
+          icon={setupError ? 'refresh' : 'search'}
+          onPress={() => {
+            if (setupError) {
+              terms.refetch();
+              config.refetch();
+              return;
+            }
+            runPreview();
+          }}
+          loading={preview.isFetching || (!b.initialized && !setupError)}
+          disabled={!b.initialized && !setupError}
         />
       </View>
 
@@ -463,7 +510,11 @@ export default function Create() {
               </Pressable>
             ))}
           </View>
-          {saveMut.isError ? <Text style={styles.err}>Could not save</Text> : null}
+          {saveMut.isError ? (
+            <Text style={styles.err} numberOfLines={2}>
+              {errorMessage(saveMut.error)}
+            </Text>
+          ) : null}
           <Button
             label="Save"
             icon="checkmark"
@@ -495,6 +546,7 @@ const styles = StyleSheet.create({
   subLbl: { ...typography.label, color: colors.textDim, marginTop: spacing(3), marginBottom: spacing(1) },
   reset: { ...typography.label, color: colors.primary2 },
   chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing(2) },
+  inlineState: { padding: spacing(4) },
   rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   matchToggle: { width: 120 },
   matchHint: { ...typography.caption, color: colors.textDim, marginTop: spacing(3) },

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, Card, Field, SectionHeader } from '@/components/ui';
+import { clearQueryCache } from '@/lib/query';
 import { useAuth } from '@/state/auth';
 import { colors, spacing, typography } from '@/theme';
 
@@ -37,6 +38,8 @@ export default function Settings() {
             icon="save-outline"
             onPress={async () => {
               await setBaseUrl(url);
+              // Cached data belongs to the old server; drop it.
+              await clearQueryCache();
               setSaved(true);
               setTimeout(() => setSaved(false), 1500);
             }}
@@ -50,6 +53,8 @@ export default function Settings() {
             <View style={{ height: spacing(3) }} />
             <Button label="Sign out" icon="log-out-outline" variant="danger" onPress={async () => {
               await logout();
+              // Cached highlights/photo metadata must not outlive the session.
+              await clearQueryCache();
               router.replace('/login');
             }} />
           </Card>
