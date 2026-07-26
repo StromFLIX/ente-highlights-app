@@ -61,6 +61,10 @@ npx expo prebuild --platform android
 
 cd android
 ./gradlew assembleRelease        # or assembleDebug for a debug build
+
+# Universal APK is ~83 MB because it ships all four ABIs. For sideloading onto a
+# modern phone, build just arm64 (~33 MB):
+./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a
 ```
 
 The APK lands at:

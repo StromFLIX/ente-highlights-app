@@ -1,13 +1,21 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image, type ImageContentFit } from 'expo-image';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View, type ViewStyle } from 'react-native';
 import { mediaSource } from '@/api/client';
 import { useAuth } from '@/state/auth';
 import { colors } from '@/theme';
 
 const blurhash = 'L6Pj0^jE.AyE_3t7t7R**0o#DgR4';
-const MAX_AUTO_RETRY = 4;
+/**
+ * Thumbnails are ~30 KB, so retrying one is cheap and usually fixes a blip.
+ * A full-size original is megabytes: remounting mid-download throws away all
+ * progress *and* leaves the abandoned request running server-side, so eager
+ * retries actively make a slow photo slower. Retry those once, then let the
+ * user decide.
+ */
+const RETRIES_THUMBNAIL = 4;
+const RETRIES_FULL = 1;
 
 type Props = {
   path: string;
@@ -34,15 +42,20 @@ export function AuthedImage({
   // Media URLs carry the bearer token, so a silent relogin must re-issue them.
   const token = useAuth((s) => s.token);
 
+  const maxRetry = useMemo(
+    () => (path.endsWith('/full') ? RETRIES_FULL : RETRIES_THUMBNAIL),
+    [path],
+  );
+
   // Auto-retry transient failures with a small backoff so images don't stay blank.
   useEffect(() => {
-    if (status === 'error' && attempt < MAX_AUTO_RETRY) {
+    if (status === 'error' && attempt < maxRetry) {
       timer.current = setTimeout(() => setAttempt((a) => a + 1), 700 * (attempt + 1));
       return () => {
         if (timer.current) clearTimeout(timer.current);
       };
     }
-  }, [status, attempt]);
+  }, [status, attempt, maxRetry]);
 
   // Reset when the underlying image changes (e.g. a recycled SectionList cell),
   // so a previously errored/loaded cell reloads the new thumbnail instead of
@@ -76,7 +89,7 @@ export function AuthedImage({
           <ActivityIndicator size="small" color={colors.textFaint} />
         </View>
       ) : null}
-      {status === 'error' && attempt >= MAX_AUTO_RETRY ? (
+      {status === 'error' && attempt >= maxRetry ? (
         <Pressable
           style={styles.center}
           onPress={() => {
